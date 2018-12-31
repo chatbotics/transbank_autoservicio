@@ -6,6 +6,8 @@ const port = new SerialPort('/dev/ttyACM0', {
     stopBits:1,
 }, onOpen)
 
+var serialport_opened = false
+
 const UX300 = {
     STX:'\x02',
     BEL:'\x07',
