@@ -1,8 +1,8 @@
 const SerialPort = require('serialport')
 const Delimiter = require('@serialport/parser-delimiter')
-const event = require('events');
+const event = require('events')
 
-const emitter = new event.EventEmitter();
+const emitter = new event.EventEmitter()
 let port
 let serialport_opened
 let dataParser
@@ -20,11 +20,12 @@ function initListeners(){
         
         let datas = data.split('|')
         parseTransaction(datas)
+        port.flush()
         
     })
 
     port.on('error', function(data) {
-        console.log('Error: ' + data);
+        console.log('Error: ' + data)
     })
     
 }
@@ -49,14 +50,14 @@ const UX300 = {
         var buf = new ArrayBuffer(command.length);
         var bufView = new Uint8Array(buf);
         for ( var i = 0; i < command.length; i++ ) {
-            bufView[i] = command.charCodeAt(i);
+            bufView[i] = command.charCodeAt(i)
         }
 
         var lrc = 0
         for ( var i = 0; i < command.length; i++ ) {
-            lrc = ( lrc ^ bufView[i] ) & 0xFF;
+            lrc = ( lrc ^ bufView[i] ) & 0xFF
         } 
-        return String.fromCharCode(lrc);
+        return String.fromCharCode(lrc)
 
     }, 
     
@@ -102,7 +103,7 @@ const UX300 = {
                 console.log('failed to open port: ' + error)
             } else {
                 console.log('serial port opened')
-                serialport_opened = true;
+                serialport_opened = true
                 
             }
         })
@@ -120,7 +121,7 @@ const UX300 = {
                 console.log('failed to close port: ' + error)
             } else {
                 console.log('serial port closed!')
-                serialport_opened = false;
+                serialport_opened = false
             }
         })
     }
