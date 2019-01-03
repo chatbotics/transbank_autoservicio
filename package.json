@@ -1,6 +1,6 @@
 {
   "name": "transbank_autoservicio",
-  "version": "1.0.4",
+  "version": "1.0.5",
   "description": "Libreria para el uso del autoservicio de transbank",
   "main": "src/index.js",
   "scripts": {

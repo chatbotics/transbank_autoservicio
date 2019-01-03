@@ -116,12 +116,11 @@ const UX300 = {
 
     close() {
         port.close(error => {
-            if ( error ) {
+            if (error) {
                 console.log('failed to close port: ' + error)
             } else {
                 console.log('serial port closed!')
                 serialport_opened = false;
-                
             }
         })
     }
@@ -135,20 +134,16 @@ function sendCommand(data) {
             if(err)
                 console.log("Error:", err)
             else {
-                console.log("Comando enviado:", command)
+                console.log("Command sended:", command)
             }
             port.write(UX300.ACK)
         })
     } else {
-        console.log("Puerto no abierto")
+        console.log("Port closed")
     }
 }
 
 function parseTransaction(data) {
-
-    /*for(let i=0; i<data.length; i++) {
-        console.log(i, data[i])
-    }*/
     switch(data[0]) {
         case UX300.INTERMEDIATE_MESSAGES:
             switch(data[1]) {
@@ -164,17 +159,14 @@ function parseTransaction(data) {
             }
             break;
         case UX300.PAYMENT_RESPONSE:
-            console.log("Respuesta de pago!")
             if(data[15] != undefined)
                 emitter.emit('payment_voucher', data[15].match(/.{1,40}/g))
             break;
 
         default:
-            console.log("NADA PARSEABLE HERMANO")
+            console.log("Not recognized data:", data)
         break;
     }
-    
-    
 }
 
 module.exports = {
