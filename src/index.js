@@ -3,16 +3,31 @@ const Delimiter = require('@serialport/parser-delimiter')
 const event = require('events');
 
 const emitter = new event.EventEmitter();
+let port
+let serialport_opened
+let dataParser
 
-const port = new SerialPort('/dev/ttyACM0', {
-    baudRate: 115200,
-    dataBits:8,
-    stopBits:1,
-    autoOpen: false
-})
+function init(p, config){
+    port = new SerialPort(p, config)
+    serialport_opened = false
+    dataParser = port.pipe(new Delimiter({delimiter:UX300.ETX}))
+    initListeners()
+}
 
-let serialport_opened = false
+function initListeners(){
+    dataParser.on('data', function(data) {
+        data = data.toString('utf-8').substring(1, data.toString('utf-8').length)
+        
+        let datas = data.split('|')
+        parseTransaction(datas)
+        
+    })
 
+    port.on('error', function(data) {
+        console.log('Error: ' + data);
+    })
+    
+}
 
 const UX300 = {
     STX:'\x02',
@@ -112,9 +127,6 @@ const UX300 = {
     }
 }
 
-
-const dataParser = port.pipe(new Delimiter({delimiter:UX300.ETX}))
-
 function sendCommand(data) {
     if(serialport_opened) {
         const LRC = UX300.calcLRC(data)
@@ -125,19 +137,12 @@ function sendCommand(data) {
             else {
                 console.log("Comando enviado:", result)
             }
+            port.write(UX300.ACK)
         })
     } else {
         console.log("Puerto no abierto")
     }
 }
-
-dataParser.on('data', function(data) {
-    data = data.toString('utf-8').substring(1, data.toString('utf-8').length)
-    
-    let datas = data.split('|')
-    parseTransaction(datas)
-    port.write(UX300.ACK)
-})
 
 function parseTransaction(data) {
 
@@ -161,7 +166,7 @@ function parseTransaction(data) {
         case UX300.PAYMENT_RESPONSE:
             console.log("Respuesta de pago!")
             if(data[15] != undefined)
-                console.log(data[15].match(/.{1,40}/g));
+                emitter.emit('payment_voucher', data[15].match(/.{1,40}/g))
             break;
 
         default:
@@ -172,31 +177,8 @@ function parseTransaction(data) {
     
 }
 
-// get data from connected device via serial port
-/*dataParser.on('data', function(data) {
-    // get buffered data and parse it to an utf-8 string
-    data = data.toString('utf-8');
-    // you could for example, send this data now to the the client via socket.io
-    // io.emit('emit_data', data);
-    let datas = data.split('|');
-    for(let i=0; i<datas.length; i++) {
-        //console.log("LINEA:", i, '>')
-        //console.log(datas[i]+'\n')
-        // console.log('datas: ', datas)
-        if(datas[i] == '\u00020900') {
-            console.log("MENSAJE INTERMEDIO")
-        } else if(datas[i] == '\u00020210') {
-            console.log("MENSAJE Transaccion")
-        }
-    }
-});*/
-
-port.on('error', function(data) {
-    console.log('Error: ' + data);
-})
-
-
 module.exports = {
+    init: init,
     connect: UX300.connect,
     onOpen: UX300.bindOnOpen,
     initialize: UX300.initialize,
