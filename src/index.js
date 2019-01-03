@@ -131,11 +131,11 @@ function sendCommand(data) {
     if(serialport_opened) {
         const LRC = UX300.calcLRC(data)
         const command = UX300.STX + data + UX300.ETX + LRC
-        port.write(command, function(err, result) {
+        port.write(command, function(err) {
             if(err)
                 console.log("Error:", err)
             else {
-                console.log("Comando enviado:", result)
+                console.log("Comando enviado:", command)
             }
             port.write(UX300.ACK)
         })
