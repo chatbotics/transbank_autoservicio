@@ -10,7 +10,7 @@ let serialport_opened
 function init(p, config){
     port = new SerialPort(p, config)
     serialport_opened = false
-    dataParser = port.pipe(new Regex({regex:UX300.STX}))
+    dataParser = port.pipe(new Regex({regex:UX300.ETX}))
     initListeners()
 }
 
@@ -30,20 +30,64 @@ function initListeners(){
 }
 
 const UX300 = {
-    STX:'\x02',
-    BEL:'\x07',
-    SEP:'\x7c',
-    ETX:'\x03',
-    FS:'\x1c',
-    ACK:'\x06',
-    NAK:'\x15',
-    //
-    INTERMEDIATE_MESSAGES: '0900',
-    USE_CARD: '80',
-    WRITE_PIN: '81',
-    PROCESSING_PAYMENT: '82',
+    STX:                                '\x02',
+    BEL:                                '\x07',
+    SEP:                                '\x7c',
+    ETX:                                '\x03',
+    FS:                                 '\x1c',
+    ACK:                                '\x06',
+    NAK:                                '\x15',
+    
+    PAYMENT_REQUEST:                    '0200',
+    PAYMENT_RESPONSE:                   '0210',
 
-    PAYMENT_RESPONSE: '0210',
+    LAST_PAYMENT_REQUEST:               '0250',
+    LAST_PAYMENT_RESPONSE:              '0260',
+
+    CANCEL_TRANSACTION_REQUEST:         '1200',
+    CANCEL_TRANSACTION_RESPONSE:        '1210',
+
+    CLOSE_TRANSACTIONS_REQUEST:         '0500',
+    CLOSE_TRANSACTIONS_RESPONSE:        '0510',
+
+    LOAD_KEYS_REQUEST:                  '0800',
+    LOAD_KEYS_RESPONSE:                 '0810',
+
+    POLLING_REQUEST:                    '0100',
+    
+    INITIALIZATION_REQUEST:             '0070',
+    
+    INITIALIZATION_RESPONSE_REQUEST:    '0080',
+    INITIALIZATION_RESPONSE_RESPONSE:   '1080',
+
+    ENCRYPTED_PAN_REQUEST:              '0400',
+    ENCRYPTED_PAN_RESPONSE:             '0410',
+
+    INTERMEDIATE_MESSAGES:              '0900',
+    USE_CARD:                             '80',
+    WRITE_PIN:                            '81',
+    PROCESSING_PAYMENT:                   '82',
+    
+    REJECTED:                             '01',
+    APPROVED:                             '00',
+    TRANSBANK_NO_RESPONSE:                '02',
+    CONNECTION_FAIL:                      '03',
+    TRANSACTION_WAS_CANCELLED:            '04',
+    TRANSACTION_DOESNT_EXISTS:            '05',
+    UNSUPPORTED_CARD:                     '06',
+    CANCELLED_TRANSACTION:                '07',
+    CANT_CANCEL_TRANSACTION:              '08',
+    CARD_READ_ERROR:                      '09',
+    LOW_AMOUNT_ERROR:                     '10',
+    PAYMENT_DOESNT_EXISTS:                '11',
+    UNSUPPORTED_TRANSACTION:              '12',
+    MUST_EXECUTE_CLOSE:                   '13',
+    CRYPT_ERROR_PAN:                      '14',
+    DEBIT_OPERATION_ERROR:                '15',
+
+    INITIALIZATION_SUCCESS:               '90',
+    INITIALIZATION_FAIL:                  '91',
+    READER_DISCONNECTED:                  '92',
 
     calcLRC: function(command) {
         command = command + UX300.ETX
@@ -62,39 +106,34 @@ const UX300 = {
     }, 
     
     polling() {
-        const data = '0100'
-
-        sendCommand(data)
+        sendCommand(UX300.POLLING_REQUEST)
     },
 
     pay(amount, ticketNumber) {
-        const data = '0200|' + amount + '|' + ticketNumber + '|1|1'
+        const data = UX300.PAYMENT_REQUEST + '|' + amount + '|' + ticketNumber + '|1|1'
         sendCommand(data)
     },
 
     closeTransactions() {
-        const data = '0500|1'
+        const data = UX300.CLOSE_TRANSACTIONS_REQUEST + '|1'
         sendCommand(data)
     },
 
     lastTransaction() {
-        const data = '0250|1'
+        const data = UX300.LAST_PAYMENT_REQUEST + '|1'
         sendCommand(data)
     },
 
     cancelTransaction() {
-        const data = '1200'
-        sendCommand(data)
+        sendCommand(UX300.CANCEL_TRANSACTION_REQUEST)
     },
 
     loadKeys() {
-        const data = '0800'
-        sendCommand(data)
+        sendCommand(UX300.LOAD_KEYS_REQUEST)
     },
 
     initialize() {
-        const data = '0070'
-        sendCommand(data)
+        sendCommand(UX300.INITIALIZATION_REQUEST)
     },
 
     connect() {
@@ -168,10 +207,62 @@ function parseTransaction(data) {
                     break;
             }
             break;
-        case UX300.PAYMENT_RESPONSE:
-            port.write(UX300.ACK)
-            if(data[15] != undefined)
+        
+        case UX300.PAYMENT_RESPONSE:    
+            switch(data[1]) {
+                case UX300.APPROVED:
+                    emitter.emit('payment_voucher', data[15].match(/.{1,40}/g))
+                    break;
+                case UX300.REJECTED:
+                    emitter.emit('error', UX300.REJECTED)
+                    break;
+                case UX300.TRANSBANK_NO_RESPONSE:
+                    emitter.emit('error', UX300.TRANSBANK_NO_RESPONSE)
+                    break;
+                case UX300.CONNECTION_FAIL:
+                    emitter.emit('error', UX300.CONNECTION_FAIL)
+                    break;
+                case UX300.TRANSACTION_WAS_CANCELLED:
+                    emitter.emit('error', UX300.TRANSACTION_WAS_CANCELLED)
+                    break;
+                case UX300.TRANSACTION_DOESNT_EXISTS:
+                    emitter.emit('error', UX300.TRANSACTION_DOESNT_EXISTS)
+                    break;
+                case UX300.UNSUPPORTED_CARD:
+                    emitter.emit('error', UX300.UNSUPPORTED_CARD)
+                    break;
+                case UX300.CANCELLED_TRANSACTION:
+                    emitter.emit('error', UX300.CANCELLED_TRANSACTION)
+                    break;
+                case UX300.CANT_CANCEL_TRANSACTION:
+                    emitter.emit('error', UX300.CANT_CANCEL_TRANSACTION)
+                    break;
+                case UX300.CARD_READ_ERROR:
+                    emitter.emit('error', UX300.CARD_READ_ERROR)
+                    break;
+                case UX300.LOW_AMOUNT_ERROR:
+                    emitter.emit('error', UX300.LOW_AMOUNT_ERROR)
+                    break;
+                case UX300.PAYMENT_DOESNT_EXISTS:
+                    emitter.emit('error', UX300.PAYMENT_DOESNT_EXISTS)
+                    break;
+                case UX300.UNSUPPORTED_TRANSACTION:
+                    emitter.emit('error', UX300.UNSUPPORTED_TRANSACTION)
+                    break;
+                case UX300.MUST_EXECUTE_CLOSE:
+                    emitter.emit('error', UX300.MUST_EXECUTE_CLOSE)
+                    break;
+                case UX300.CRYPT_ERROR_PAN:
+                    emitter.emit('error', UX300.CRYPT_ERROR_PAN)
+                    break;
+                case UX300.DEBIT_OPERATION_ERROR:
+                    emitter.emit('error', UX300.DEBIT_OPERATION_ERROR)
+                    break;
+            }
+            if(data[15] != undefined) {
                 emitter.emit('payment_voucher', data[15].match(/.{1,40}/g))
+            }
+            port.write(UX300.ACK)
             break;
 
         default:
