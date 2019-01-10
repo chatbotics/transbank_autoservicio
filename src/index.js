@@ -1,26 +1,25 @@
 const SerialPort = require('serialport')
-const Delimiter = require('@serialport/parser-delimiter')
+const Regex = require('@serialport/parser-regex')
 const event = require('events')
 
 const emitter = new event.EventEmitter()
 let port
 let serialport_opened
-let dataParser
+
 
 function init(p, config){
     port = new SerialPort(p, config)
     serialport_opened = false
-    dataParser = port.pipe(new Delimiter({delimiter:UX300.ETX}))
+    dataParser = port.pipe(new Regex({regex:UX300.STX}))
     initListeners()
 }
 
 function initListeners(){
     dataParser.on('data', function(data) {
-        data = data.toString('utf-8').substring(1, data.toString('utf-8').length)
-        
-        let datas = data.split('|')
-        parseTransaction(datas)
-        port.flush()
+        if(data[0] != 6) {
+            data = data.toString('utf-8').substring(2, data.toString('utf-8').length)
+            parseTransaction(data.split('|'))
+        }
         
     })
 
@@ -37,18 +36,19 @@ const UX300 = {
     ETX:'\x03',
     FS:'\x1c',
     ACK:'\x06',
+    NAK:'\x15',
     //
-    INTERMEDIATE_MESSAGES: '\u00020900',
+    INTERMEDIATE_MESSAGES: '0900',
     USE_CARD: '80',
     WRITE_PIN: '81',
     PROCESSING_PAYMENT: '82',
 
-    PAYMENT_RESPONSE: '\u00020210',
+    PAYMENT_RESPONSE: '0210',
 
     calcLRC: function(command) {
         command = command + UX300.ETX
-        var buf = new ArrayBuffer(command.length);
-        var bufView = new Uint8Array(buf);
+        var buf = new ArrayBuffer(command.length)
+        var bufView = new Uint8Array(buf)
         for ( var i = 0; i < command.length; i++ ) {
             bufView[i] = command.charCodeAt(i)
         }
@@ -115,6 +115,16 @@ const UX300 = {
         })
     },
 
+    flush() {
+        port.flush(error => {
+            if (error) {
+                console.log('failed to flush port: ' + error)
+            } else {
+                console.log('serial port flushed!')
+            }
+        })
+    },
+
     close() {
         port.close(error => {
             if (error) {
@@ -137,7 +147,6 @@ function sendCommand(data) {
             else {
                 console.log("Command sended:", command)
             }
-            port.write(UX300.ACK)
         })
     } else {
         console.log("Port closed")
@@ -160,6 +169,7 @@ function parseTransaction(data) {
             }
             break;
         case UX300.PAYMENT_RESPONSE:
+            port.write(UX300.ACK)
             if(data[15] != undefined)
                 emitter.emit('payment_voucher', data[15].match(/.{1,40}/g))
             break;
@@ -174,6 +184,7 @@ module.exports = {
     init: init,
     connect: UX300.connect,
     onOpen: UX300.bindOnOpen,
+    flush: UX300.flush,
     initialize: UX300.initialize,
     loadKeys: UX300.loadKeys,
     pay: UX300.pay,
