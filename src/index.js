@@ -5,6 +5,9 @@ const emitter = new event.EventEmitter()
 let port
 let serialport_opened
 
+let isPulling = false;
+let isIniting = false;
+
 
 function init(p, config) {
     port = new SerialPort(p, config)
@@ -15,18 +18,23 @@ function init(p, config) {
 function initListeners() {
     let resultVoucher = Buffer.alloc(0)
     port.on('data', function (data) {
-        if(data[0] == 6) {
+
+        if (data[0] == 6) {
+            if (isPulling) {
+                isPulling = false;
+                parseTransaction([UX300.POLLING_REQUEST, ''])
+            }
             console.log("ES UN ACK!")
         }
-        else if(data[0] == 2 && data[data.length-2] == 3) {
-            let result = data.slice(1, data.length-2).toString('utf-8')
+        else if (data[0] == 2 && data[data.length - 2] == 3) {
+            let result = data.slice(1, data.length - 2).toString('utf-8')
             parseTransaction(result.split('|'))
         }
         else {
             resultVoucher = Buffer.concat([resultVoucher, data])
-            
-            for(let e of data){
-                if (e == 3){
+
+            for (let e of data) {
+                if (e == 3) {
                     console.log('Terminoooooooooo')
                     parseTransaction(resultVoucher.slice(1).toString('utf-8').split('|'))
                     resultVoucher = Buffer.alloc(0)
@@ -119,14 +127,36 @@ const UX300 = {
     },
 
     polling() {
+        isPulling = true;
         sendCommand(UX300.POLLING_REQUEST)
     },
+    polling_2() {
+        return new Promise(async (resolve, reject) => {
+            const data = UX300.POLLING_REQUEST
+            const LRC = UX300.calcLRC(data)
+            const command = UX300.STX + data + UX300.ETX + LRC
+            let writePromise = new Promise((_resolve, _reject) => {
+                port.write(command, (err) => {
+                    err ? reject() : _resolve()
+                })
+            })
+            await writePromise
 
+            const cb = (data) => {
+                if (data[0] == 6) {
+                    console.log('Polling 2 recibido');
+                    console.log(data);
+                    port.removeListener('data', cb)
+                    resolve();
+                }
+            }
+            port.on('data', cb)
+        })
+    },
     pay(amount, ticketNumber) {
         const data = UX300.PAYMENT_REQUEST + '|' + amount + '|' + ticketNumber + '|1|1'
         sendCommand(data)
     },
-
     closeTransactions() {
         const data = UX300.CLOSE_TRANSACTIONS_REQUEST + '|1'
         sendCommand(data)
@@ -146,6 +176,7 @@ const UX300 = {
     },
 
     initialize() {
+        isIniting = true;
         sendCommand(UX300.INITIALIZATION_REQUEST)
     },
 
@@ -206,7 +237,7 @@ function sendCommand(data) {
 }
 
 function parseTransaction(data) {
-    
+
     let typeMessage = data[0]
     let responseCode = data[1]
     switch (typeMessage) {
@@ -238,6 +269,14 @@ function parseTransaction(data) {
                 emitter.emit('transactions_close', data[4].match(/.{1,40}/g))
                 port.write(UX300.ACK)
             }
+            break
+        case UX300.LOAD_KEYS_RESPONSE:
+            console.log('Llaves cargadas', typeMessage)
+            port.write(UX300.ACK)
+            break
+        case UX300.POLLING_REQUEST:
+            emitter.emit('polling_response')
+            port.write(UX300.ACK)
             break
         default:
             console.log('default', typeMessage)
