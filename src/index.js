@@ -7,11 +7,12 @@ let serialport_opened
 
 let isPulling = false;
 let isIniting = false;
+let isInitingResult = false;
 
 
 function init(p, config) {
     port = new SerialPort(p, config)
-    serialport_opened = false
+    /* serialport_opened = false */
     initListeners()
 }
 
@@ -24,6 +25,17 @@ function initListeners() {
                 isPulling = false;
                 parseTransaction([UX300.POLLING_REQUEST, ''])
             }
+
+            if (isIniting) {
+                isIniting = false;
+                parseTransaction([UX300.INITIALIZATION_REQUEST, ''])
+            }
+
+            if (isInitingResult) {
+                isInitingResult = false;
+                parseTransaction([UX300.INITIALIZATION_RESPONSE_REQUEST, ''])
+            }
+
             console.log("ES UN ACK!")
         }
         else if (data[0] == 2 && data[data.length - 2] == 3) {
@@ -35,7 +47,6 @@ function initListeners() {
 
             for (let e of data) {
                 if (e == 3) {
-                    console.log('Terminoooooooooo')
                     parseTransaction(resultVoucher.slice(1).toString('utf-8').split('|'))
                     resultVoucher = Buffer.alloc(0)
                     break;
@@ -45,7 +56,7 @@ function initListeners() {
     })
 
     port.on('error', function (data) {
-        console.log('Error: ' + data)
+        // console.log('Error: ' + data)
     })
 
 }
@@ -110,6 +121,8 @@ const UX300 = {
     INITIALIZATION_FAIL: '91',
     READER_DISCONNECTED: '92',
 
+    POS_DISABLED: 'pos_disabled',
+
     calcLRC: function (command) {
         command = command + UX300.ETX
         var buf = new ArrayBuffer(command.length)
@@ -131,17 +144,20 @@ const UX300 = {
         sendCommand(UX300.POLLING_REQUEST)
     },
     polling_2() {
+        console.log('polling_2 interno')
         return new Promise(async (resolve, reject) => {
             const data = UX300.POLLING_REQUEST
             const LRC = UX300.calcLRC(data)
             const command = UX300.STX + data + UX300.ETX + LRC
+
             let writePromise = new Promise((_resolve, _reject) => {
                 port.write(command, (err) => {
                     err ? reject() : _resolve()
                 })
             })
-            await writePromise
 
+            await writePromise
+            console.log('polling_2 interno promise')
             const cb = (data) => {
                 if (data[0] == 6) {
                     console.log('Polling 2 recibido');
@@ -179,15 +195,42 @@ const UX300 = {
         isIniting = true;
         sendCommand(UX300.INITIALIZATION_REQUEST)
     },
+    result_initialize() {
+        isInitingResult = true;
+        sendCommand(UX300.INITIALIZATION_RESPONSE_REQUEST)
+    },
+    initialize_2() {
+        return new Promise(async (resolve, reject) => {
+            const data = UX300.INITIALIZATION_REQUEST
+            const LRC = UX300.calcLRC(data)
+            const command = UX300.STX + data + UX300.ETX + LRC
 
+            let writePromise = new Promise((_resolve, _reject) => {
+                port.write(command, (err) => {
+                    err ? reject() : _resolve()
+                })
+            })
+
+            await writePromise
+
+            const cb2 = (data) => {
+                if (data[0] == 6) {
+                    port.removeListener('data', cb2)
+                    console.log('remove listener')
+                    resolve();
+                }
+            }
+            port.on('data', cb2)
+        })
+    },
     connect() {
         port.open(error => {
             if (error) {
-                console.log('failed to open port: ' + error)
+                // console.log('failed to open port: ' + error)
+                emitter.emit('error', UX300.POS_DISABLED)
             } else {
                 console.log('serial port opened')
-                serialport_opened = true
-
+                /* serialport_opened = true */
             }
         })
     },
@@ -214,14 +257,16 @@ const UX300 = {
                 console.log('failed to close port: ' + error)
             } else {
                 console.log('serial port closed!')
-                serialport_opened = false
+                /* serialport_opened = false */
             }
         })
     }
 }
 
 function sendCommand(data) {
-    if (serialport_opened) {
+    console.log('enviando commando')
+    /* console.log(serialport_opened, port.isOpen) */
+    if (port.isOpen) {
         const LRC = UX300.calcLRC(data)
         const command = UX300.STX + data + UX300.ETX + LRC
         port.write(command, function (err) {
@@ -232,12 +277,12 @@ function sendCommand(data) {
             }
         })
     } else {
+        UX300.connect()
         console.log("Port closed")
     }
 }
 
 function parseTransaction(data) {
-
     let typeMessage = data[0]
     let responseCode = data[1]
     switch (typeMessage) {
@@ -277,6 +322,23 @@ function parseTransaction(data) {
         case UX300.POLLING_REQUEST:
             emitter.emit('polling_response')
             port.write(UX300.ACK)
+            break
+        case UX300.LAST_PAYMENT_RESPONSE:
+            emitter.emit('last_payment_response', responseCode)
+            port.write(UX300.ACK)
+            break
+        case UX300.CANCEL_TRANSACTION_RESPONSE:
+            emitter.emit('canceled_transaction', responseCode)
+            port.write(UX300.ACK)
+            break
+        case UX300.INITIALIZATION_REQUEST:
+            emitter.emit('initialization_request')
+            break
+        case UX300.INITIALIZATION_RESPONSE_REQUEST:
+            emitter.emit('initialization_response_request')
+            break
+        case UX300.INITIALIZATION_RESPONSE_RESPONSE:
+            emitter.emit('initialization_response_response', data)
             break
         default:
             console.log('default', typeMessage)
