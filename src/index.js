@@ -294,7 +294,27 @@ function parseTransaction(data) {
             switch (responseCode) {
                 case UX300.APPROVED:
                     if (data[15] != undefined) {
-                        emitter.emit('payment_voucher', data[15].match(/.{1,40}/g))
+                        transbankInfo = {
+                            responseCode: data[1],
+                            commerceCode: data[2],
+                            terminalId: data[3],
+                            ticketNumber: data[4],
+                            autorizationCode: data[5],
+                            amount: data[6],
+                            lastCardNumber: data[7],
+                            cardType: data[8]
+                        }
+
+                        if (transbankInfo.cardType == 'DB') {
+                            transbankInfo.accountingDate = data[9]
+                            transbankInfo.accountNumber = data[10]
+                        } else if (transbankInfo.cardType == 'CR') {
+                            transbankInfo.cardAbbreviation = data[11]
+                        }
+                        transbankInfo.transactionDate = data[13]
+                        transbankInfo.transactionHour = data[14]
+                        console.log(data)
+                        emitter.emit('payment_voucher', { voucher: data[15].match(/.{1,40}/g), transbankInfo })
                         port.write(UX300.ACK)
                     }
                     else {
@@ -324,7 +344,7 @@ function parseTransaction(data) {
             port.write(UX300.ACK)
             break
         case UX300.LAST_PAYMENT_RESPONSE:
-            emitter.emit('last_payment_response', responseCode)
+            emitter.emit('last_payment_response', responseCode, data[15].match(/.{1,40}/g))
             port.write(UX300.ACK)
             break
         case UX300.CANCEL_TRANSACTION_RESPONSE:
