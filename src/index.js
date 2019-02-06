@@ -344,7 +344,8 @@ function parseTransaction(data) {
             port.write(UX300.ACK)
             break
         case UX300.LAST_PAYMENT_RESPONSE:
-            emitter.emit('last_payment_response', responseCode, data[15].match(/.{1,40}/g))
+            let voucher = data.length > 14 ? data[15].match(/.{1,40}/g) : null;
+            emitter.emit('last_payment_response', responseCode, voucher)
             port.write(UX300.ACK)
             break
         case UX300.CANCEL_TRANSACTION_RESPONSE:
