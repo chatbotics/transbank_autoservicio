@@ -56,7 +56,9 @@ function initListeners() {
     })
 
     port.on('error', function (data) {
+        console.log('Aqui fue el error ')
         // console.log('Error: ' + data)
+
     })
 
 }
@@ -224,14 +226,18 @@ const UX300 = {
         })
     },
     connect() {
-        port.open(error => {
-            if (error) {
-                // console.log('failed to open port: ' + error)
-                emitter.emit('error', UX300.POS_DISABLED)
-            } else {
-                console.log('serial port opened')
-                /* serialport_opened = true */
-            }
+        return new Promise((resolve, reject) => {
+            port.open(error => {
+                if (error) {
+                    console.log(error)
+                    // console.log('failed to open port: ' + error)
+                    reject(UX300.POS_DISABLED)
+                } else {
+                    resolve('serial port opened')
+                    console.log('serial port opened')
+                    /* serialport_opened = true */
+                }
+            })
         })
     },
 
@@ -270,14 +276,17 @@ function sendCommand(data) {
         const LRC = UX300.calcLRC(data)
         const command = UX300.STX + data + UX300.ETX + LRC
         port.write(command, function (err) {
-            if (err)
+            if (err) {
                 console.log("Error:", err)
+                emitter.emit('error', UX300.POS_DISABLED)
+            }
             else {
                 console.log("Command sended:", command)
             }
         })
     } else {
         UX300.connect()
+        emitter.emit('error', UX300.POS_DISABLED)
         console.log("Port closed")
     }
 }
